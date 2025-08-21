@@ -1,29 +1,29 @@
-import { 
-  View, 
-  Text, 
-  Image, 
-  TextInput, 
-  TouchableOpacity, 
-  Alert, 
-  ActivityIndicator, 
-  Platform, 
-  KeyboardAvoidingView, 
-  ScrollView 
-} from 'react-native';
+import {
+  View,
+  Text,
+  Image,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  Platform,
+  KeyboardAvoidingView,
+  ScrollView,
+} from "react-native";
 
-import Checkbox from 'expo-checkbox';
-import { useState } from 'react';
-import { Eye, EyeOff, User, Lock } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import images from '@/constants/images';
-import { useRouter } from 'expo-router';
-import { styles } from '@/constants/styles/auth_styles';
-import { useAuth } from '@/context/auth-context';
+import Checkbox from "expo-checkbox";
+import { useState } from "react";
+import { Eye, EyeOff, User, Lock } from "lucide-react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import images from "@/constants/images";
+import { useRouter } from "expo-router";
+import { styles } from "@/constants/styles/auth_styles";
+import { useAuth } from "@/context/auth-context";
 
 const Login = () => {
   const [remember, setRemember] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -32,7 +32,7 @@ const Login = () => {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert("Error", "Please fill in all fields");
       return;
     }
 
@@ -40,11 +40,14 @@ const Login = () => {
 
     try {
       await login(email, password);
-      Alert.alert('Success', 'OTP sent to your email', [
-        { text: 'OK', onPress: () => router.push('/auth/verification') }
+      Alert.alert("Success", "OTP sent to your email", [
+        { text: "OK", onPress: () => router.push("/auth/verification") },
       ]);
     } catch (error) {
-      Alert.alert('Login Failed', error.message || 'Something went wrong. Please try again.');
+      Alert.alert(
+        "Login Failed",
+        error.message || "Something went wrong. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -65,7 +68,6 @@ const Login = () => {
 
         {/* Username & Password Input */}
         <View style={styles.formContainer}>
-
           {/* Email Field */}
           <View style={styles.inputContainer}>
             <User size={20} color="#9A8478" style={styles.leftIcon} />
@@ -89,8 +91,12 @@ const Login = () => {
               placeholderTextColor="#9A8478"
               secureTextEntry={!showPassword}
               onChangeText={setPassword}
+              required
             />
-            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
+            <TouchableOpacity
+              onPress={() => setShowPassword(!showPassword)}
+              style={styles.eyeIcon}
+            >
               {showPassword ? (
                 <EyeOff size={20} color="#9A8478" />
               ) : (
@@ -105,11 +111,11 @@ const Login = () => {
               <Checkbox
                 value={remember}
                 onValueChange={setRemember}
-                color={remember ? '#173B7E' : undefined}
+                color={remember ? "#173B7E" : undefined}
               />
               <Text style={styles.textRemember}>Remember Me</Text>
             </View>
-            <TouchableOpacity onPress={() => router.push('/auth/forgot-pass')}>
+            <TouchableOpacity onPress={() => router.push("/auth/forgot-pass")}>
               <Text style={styles.textForgot}>Forgot Password?</Text>
             </TouchableOpacity>
           </View>
@@ -121,7 +127,7 @@ const Login = () => {
             disabled={loading}
           >
             <LinearGradient
-              colors={['#173B7E', '#1A4C9D']}
+              colors={["#173B7E", "#1A4C9D"]}
               style={styles.loginButtonGradient}
             >
               {loading ? (

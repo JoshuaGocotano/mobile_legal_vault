@@ -1,7 +1,20 @@
 import { Tabs, useSegments, useRouter } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { ClipboardList, FileText, Home, Scale, User, Bell } from "lucide-react-native";
-import { View, Text, TouchableOpacity, Platform, StatusBar } from "react-native";
+import {
+  ClipboardList,
+  FileText,
+  Home,
+  Scale,
+  User,
+  Bell,
+} from "lucide-react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Platform,
+  StatusBar,
+} from "react-native";
 import { useState, useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import ProtectedRoute from "@/components/protected-route";
@@ -21,8 +34,6 @@ function CustomHeader({ title }) {
       edges={["top"]}
       style={{
         backgroundColor: "#fff",
-        paddingHorizontal: 16,
-        paddingBottom: 12,
         paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
       }}
     >
@@ -97,7 +108,9 @@ export default function TabsLayout() {
               name="tasks"
               options={{
                 title: "Tasks",
-                tabBarIcon: ({ color }) => <ClipboardList color={color} size={26} />,
+                tabBarIcon: ({ color }) => (
+                  <ClipboardList color={color} size={26} />
+                ),
               }}
             />
             <Tabs.Screen
