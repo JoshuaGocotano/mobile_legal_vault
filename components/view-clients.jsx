@@ -1,340 +1,413 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    Modal,
-    Alert,
+  View,
+  Text,
+  TouchableOpacity,
+  FlatList,
+  Alert,
 } from "react-native";
-import {
-    Mail,
-    Phone,
-    X,
-    Pencil,
-    Trash2,
-} from "lucide-react-native";
-import { sampleClients } from "@/constants/sample_data";
+import { Pencil, Trash2, Eye, RefreshCcw } from "lucide-react-native";
+import { styles } from "../constants/styles/view-clients";
 
-const ViewClients = () => {
-    const [searchTerm, setSearchTerm] = useState("");
-    const [clients, setClients] = useState(sampleClients || []);
-    const [selectedClient, setSelectedClient] = useState(null);
-    const [modalVisible, setModalVisible] = useState(false);
-    const [editModalVisible, setEditModalVisible] = useState(false);
-    const [formData, setFormData] = useState({
-        name: "", email: "", phone: "", contactPersonName: "",
-        contactPersonNum: "", relation_role: "",
-    });
+// api
+import { getEndpoint } from "../constants/api-config";
 
-    const filteredClients = clients.filter((client) =>
-        (client.name || "").toLowerCase().includes((searchTerm || "").toLowerCase())
+// import your pages
+import AddContact from "../components/add-contacts";
+import ClientContact from "../components/client-contacts"; // integrated contacts view
+import AddClient from "../components/add-clients";
+
+const ViewClients = ({ user, navigation }) => {
+  const [clients, setClients] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showAllClients, setShowAllClients] = useState(false);
+  const [error, setError] = useState(null);
+
+  const [editClient, setEditClient] = useState(null);
+  // client detail modal state
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [showDetail, setShowDetail] = useState(false);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 5;
+
+  // active tab state
+  const [activeTab, setActiveTab] = useState("clients"); // "clients" | "contacts"
+  const [showAddContact, setShowAddContact] = useState(false); // controls AddContact modal visibility
+  const [showAddClient, setShowAddClient] = useState(false); // controls AddClient modal
+
+  // fetch all
+  const fetchAll = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const clients_endpoint =
+        user.user_role === "Admin"
+          ? showAllClients
+            ? getEndpoint("/all-clients")
+            : getEndpoint("/clients")
+          : getEndpoint(`/clients/${user.user_id}`);
+
+      console.log("Fetching from:", clients_endpoint);
+
+      const [cRes, uRes, ctRes] = await Promise.all([
+        fetch(clients_endpoint),
+        fetch(getEndpoint("/users")),
+        fetch(getEndpoint("/client-contacts")),
+      ]);
+
+      if (!cRes.ok || !uRes.ok || !ctRes.ok) throw new Error("Fetch failed");
+
+      const [cData, uData, ctData] = await Promise.all([
+        cRes.json(),
+        uRes.json(),
+        ctRes.json(),
+      ]);
+
+      setClients(cData);
+      setUsers(uData);
+      setContacts(ctData);
+    } catch (err) {
+      setError(err.message);
+      console.error("Fetch error:", err);
+    }
+  }, [user, showAllClients]);
+
+  useEffect(() => {
+    if (user) {
+      fetchAll();
+    }
+  }, [fetchAll, user]);
+
+  const getUserFullName = (createdBy) => {
+    const u = users.find((x) => x.user_id === createdBy);
+    return u
+      ? `${u.user_fname || ""} ${u.user_mname ? u.user_mname[0] + "." : ""} ${u.user_lname || ""
+        }`.trim()
+      : "Unknown";
+  };
+
+  const filtered = clients.filter(
+    (c) =>
+      c.client_fullname.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.client_email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const totalPages = Math.ceil(filtered.length / rowsPerPage);
+  const paginated = filtered.slice(
+    (currentPage - 1) * rowsPerPage,
+    currentPage * rowsPerPage
+  );
+
+  // handle remove
+  const confirmRemove = (client) => {
+    Alert.alert(
+      "Confirm Removal",
+      `Are you sure you want to remove ${client.client_fullname}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => handleRemoveClient(client),
+        },
+      ]
     );
+  };
 
-    const openViewModal = (client) => {
-        setSelectedClient(client);
-        setModalVisible(true);
-    };
+  const handleRemoveClient = async (client) => {
+    try {
+      await fetch(getEndpoint(`/clients/${client.client_id}`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...client, client_status: "Removed" }),
+      });
+      fetchAll();
+    } catch (e) {
+      console.error("Remove error:", e);
+    }
+  };
 
-    const closeViewModal = () => {
-        setSelectedClient(null);
-        setModalVisible(false);
-    };
+  // Add new contact handler (posts to backend then refreshes list)
+  const handleAddContact = async (newContact) => {
+    try {
+      const res = await fetch(getEndpoint("/client-contacts"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newContact),
+      });
+      if (!res.ok) throw new Error("Failed to add contact");
+      try {
+        const saved = await res.json();
+        setContacts((prev) => [saved, ...prev]);
+      } catch (_) {
+        fetchAll();
+      }
+    } catch (e) {
+      Alert.alert("Error", e.message);
+    }
+  };
 
-    const openAddModal = () => {
-        setFormData({
-            name: "", email: "", phone: "", contactPersonName: "",
-            contactPersonNum: "", relation_role: "",
-        });
-        setEditModalVisible(true);
-    };
+  const renderItem = ({ item }) => (
+    <View style={styles.clientRow}>
+      <View style={styles.clientInfo}>
+        <Text style={styles.clientName}>{item.client_fullname}</Text>
+        <Text style={styles.clientEmail}>{item.client_email}</Text>
+        <Text style={styles.clientCreatedBy}>
+          {getUserFullName(item.created_by)}
+        </Text>
+      </View>
+      <View style={styles.clientActions}>
+        <TouchableOpacity
+          onPress={() => {
+            setSelectedClient(item);
+            setShowDetail(true);
+          }}
+        >
+          <Eye size={20} color="blue" />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => console.log("Edit client:", item)}>
+          <Pencil size={20} color="orange" />
+        </TouchableOpacity>
+        {item.client_status !== "Removed" ? (
+          <TouchableOpacity onPress={() => confirmRemove(item)}>
+            <Trash2 size={20} color="red" />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity onPress={() => { }}>
+            <RefreshCcw size={20} color="green" />
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
 
-    const openEditModal = (client) => {
-        setFormData(client);
-        setEditModalVisible(true);
-    };
+  return (
+    <View style={styles.container}>
+      {/* TABS */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[
+            styles.tabButton,
+            activeTab === "clients" && styles.activeTab,
+          ]}
+          onPress={() => setActiveTab("clients")}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === "clients" && styles.activeTabText,
+            ]}
+          >
+            Add Clients
+          </Text>
+        </TouchableOpacity>
 
-    const saveClient = () => {
-        if (!formData.name.trim()) {
-            Alert.alert("Error", "Name is required");
-            return;
-        }
-        if (formData.id) {
-            setClients(clients.map((c) => (c.id === formData.id ? formData : c)));
-        } else {
-            setClients([...clients, { ...formData, id: Date.now() }]);
-        }
-        setEditModalVisible(false);
-    };
+        <TouchableOpacity
+          style={[
+            styles.tabButton,
+            activeTab === "contacts" && styles.activeTab,
+          ]}
+          onPress={() => setActiveTab("contacts")}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === "contacts" && styles.activeTabText,
+            ]}
+          >
+            View Contacts
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-    const deleteClient = (clientId) => {
-        Alert.alert("Confirm Delete", "Are you sure you want to delete this client?", [
-            { text: "Cancel", style: "cancel" },
-            {
-                text: "Delete",
-                style: "destructive",
-                onPress: () => setClients(clients.filter((c) => c.id !== clientId)),
-            },
-        ]);
-    };
+      {/* CONTENT */}
+      {activeTab === "clients" ? (
+        <>
+          {error && <Text style={styles.errorText}>{error}</Text>}
 
-    return (
-        <View style={{ flex: 1 }}>
-            {/* Sticky Header */}
-            <View
-                style={{
-                    padding: 16,
-                    shadowColor: "#000",
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.1,
-                    shadowRadius: 4,
-                    elevation: 3,
-                    zIndex: 10,
-                }}
-            >
-                {/* Buttons Row */}
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                    <TouchableOpacity
-                        style={{
-                            flex: 1,
-                            borderWidth: 1.5,
-                            borderColor: "#0B3D91",
-                            paddingVertical: 10,
-                            borderRadius: 8,
-                            alignItems: "center",
-                            backgroundColor: "#0B3D91",
-                        }}
-                    >
-                        <Text style={{ color: "#fff", fontWeight: "bold" }}>All Clients</Text>
-                    </TouchableOpacity>
+          <FlatList
+            data={paginated}
+            keyExtractor={(item) => item.client_id.toString()}
+            renderItem={renderItem}
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>No clients found.</Text>
+            }
+            scrollEnabled={true}
+          />
 
-                    <TouchableOpacity
-                        onPress={openAddModal}
-                        style={{
-                            flex: 1,
-                            borderWidth: 1.5,
-                            borderColor: "#0B3D91",
-                            paddingVertical: 10,
-                            borderRadius: 8,
-                            alignItems: "center",
-                        }}
-                    >
-                        <Text style={{ color: "#0B3D91", fontWeight: "bold" }}>+ Add Client</Text>
-                    </TouchableOpacity>
-                </View>
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <View style={styles.pagination}>
+              <TouchableOpacity
+                disabled={currentPage === 1}
+                onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              >
+                <Text style={styles.pageButton}>&lt;</Text>
+              </TouchableOpacity>
+              <Text>
+                Page {currentPage} of {totalPages}
+              </Text>
+              <TouchableOpacity
+                disabled={currentPage === totalPages}
+                onPress={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+              >
+                <Text style={styles.pageButton}>&gt;</Text>
+              </TouchableOpacity>
             </View>
+          )}
 
-            {/* Scrollable Clients List */}
-            <ScrollView contentContainerStyle={{ padding: 16 }}>
-                {filteredClients.length > 0 ? (
-                    filteredClients.map((client) => (
-                        <TouchableOpacity
-                            key={client.id}
-                            onPress={() => openViewModal(client)}
-                            activeOpacity={0.8}
-                            style={{
-                                backgroundColor: "#fff",
-                                borderRadius: 10,
-                                padding: 12,
-                                marginTop: 12,
-                                borderWidth: 1,
-                                borderColor: "#ddd",
-                            }}
-                        >
-                            <View style={{ flex: 1 }}>
+          {/* Floating Add Client Button */}
+          <TouchableOpacity
+            style={{
+              position: "absolute",
+              bottom: 20,
+              right: 20,
+              backgroundColor: "#114d89",
+              paddingVertical: 14,
+              paddingHorizontal: 16,
+              borderRadius: 28,
+              shadowColor: "#000",
+              shadowOpacity: 0.2,
+              shadowRadius: 4,
+              shadowOffset: { width: 0, height: 2 },
+              elevation: 4,
+              zIndex: 10,
+            }}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Add Client"
+            onPress={() => setShowAddClient(true)}
+          >
+            <Text style={{ color: "#fff", fontWeight: "600" }}>
+              + Add Client
+            </Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <>
+          {error && <Text style={styles.errorText}>{error}</Text>}
+          {/* Reusing ClientContact component */}
+          <ClientContact />
+        </>
+      )}
 
-                                {/* Name row */}
-                                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-                                    <Text style={{ fontSize: 16, fontWeight: "600", color: "#0B3D91" }}>
-                                        {client.name}
-                                    </Text>
-                                </View>
-
-                                {/* Email row */}
-                                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-                                    <Mail color="#0B3D91" size={16} style={{ marginRight: 10 }} />
-                                    <Text style={{ color: "#666" }}>{client.email}</Text>
-                                </View>
-
-                                {/* Phone row */}
-                                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                    <Phone color="#0B3D91" size={16} style={{ marginRight: 10 }} />
-                                    <Text style={{ color: "#666" }}>{client.phone}</Text>
-                                </View>
-                            </View>
-
-                            {/* Edit & Delete Buttons */}
-                            <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 12 }}>
-                                <TouchableOpacity
-                                    onPress={(e) => {
-                                        e.stopPropagation();
-                                        openEditModal(client);
-                                    }}
-                                    style={{
-                                        padding: 5,
-                                        borderRadius: 7,
-                                        backgroundColor: "#f0ad4e",
-                                        marginRight: 6,
-                                    }}
-                                >
-                                    <Pencil color="#fff" size={16} />
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    onPress={(e) => {
-                                        e.stopPropagation();
-                                        deleteClient(client.id);
-                                    }}
-                                    style={{
-                                        padding: 5,
-                                        borderRadius: 7,
-                                        backgroundColor: "#d9534f",
-                                    }}
-                                >
-                                    <Trash2 color="#fff" size={16} />
-                                </TouchableOpacity>
-                            </View>
-                        </TouchableOpacity>
-                    ))
-                ) : (
-                    <Text style={{ textAlign: "center", marginTop: 20, color: "#666" }}>
-                        No clients found.
-                    </Text>
-                )}
-            </ScrollView>
-
-            {/* View Modal */}
-            <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={closeViewModal}>
-                <View
-                    style={{
-                        backgroundColor: "rgba(0,0,0,0.5)",
-                        flex: 1,
-                        justifyContent: "center",
-                        alignItems: "center",
-                        padding: 20,
-                    }}
-                >
-                    <View
+      {/* Client Detail Overlay */}
+      {showDetail && selectedClient && (
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 20,
+            zIndex: 50,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "#fff",
+              padding: 18,
+              borderRadius: 12,
+              width: "92%",
+              maxHeight: "80%",
+            }}
+          >
+            <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 6 }}>
+              {selectedClient.client_fullname}
+            </Text>
+            <Text style={{ marginBottom: 2 }}>
+              Email: {selectedClient.client_email}
+            </Text>
+            <Text style={{ marginBottom: 2 }}>
+              Created By: {getUserFullName(selectedClient.created_by)}
+            </Text>
+            <Text style={{ marginBottom: 8 }}>
+              Status: {selectedClient.client_status}
+            </Text>
+            <View style={{ marginBottom: 6 }}>
+              <Text style={{ fontWeight: "600", marginBottom: 4 }}>
+                Contacts:
+              </Text>
+              {contacts.filter(
+                (c) => c.client_id === selectedClient.client_id
+              ).length === 0 ? (
+                <Text style={{ fontStyle: "italic", color: "#555" }}>
+                  No contacts.
+                </Text>
+              ) : (
+                <View style={{ gap: 6 }}>
+                  {contacts
+                    .filter((c) => c.client_id === selectedClient.client_id)
+                    .map((c) => (
+                      <View
+                        key={c.contact_id || c.contact_email}
                         style={{
-                            backgroundColor: "#fff",
-                            borderRadius: 12,
-                            padding: 20,
-                            width: "100%",
-                            maxWidth: 400,
-                            maxHeight: "90%",
+                          borderBottomWidth: 1,
+                          borderBottomColor: "#eee",
+                          paddingBottom: 4,
                         }}
-                    >
-                        <TouchableOpacity
-                            onPress={closeViewModal}
-                            style={{ position: "absolute", top: 10, right: 10, padding: 4 }}
-                        >
-                            <Text style={{ fontSize: 20, fontWeight: "bold" }}>✕</Text>
-                        </TouchableOpacity>
-
-                        <Text style={{
-                            fontSize: 20,
-                            fontWeight: "bold",
-                            color: "#0B3D91",
-                            marginBottom: 16,
-                        }}>
-                            {selectedClient?.name}
+                      >
+                        <Text style={{ fontWeight: "500" }}>
+                          {c.contact_fullname}
                         </Text>
-
-                        <ScrollView showsVerticalScrollIndicator={false}>
-                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                                {[
-                                    { label: "Email:", value: selectedClient?.email },
-                                    { label: "Phone:", value: selectedClient?.phone },
-                                    { label: "Contact Person:", value: selectedClient?.contactPersonName },
-                                    { label: "Contact Number:", value: selectedClient?.contactPersonNum },
-                                    { label: "Relation/Role:", value: selectedClient?.relation_role },
-                                    { label: "Date Created:", value: selectedClient?.dateCreated },
-                                    { label: "Created By:", value: selectedClient?.createdBy },
-                                ].map((item, index) => (
-                                    <View key={index} style={{ width: "48%" }}>
-                                        <Text style={{ fontWeight: "600", fontSize: 12, color: "#555" }}>
-                                            {item.label}
-                                        </Text>
-                                        <Text style={{ fontSize: 14, color: "#000", marginTop: 4 }}>
-                                            {item.value || "—"}
-                                        </Text>
-                                    </View>
-                                ))}
-                            </View>
-                        </ScrollView>
-                    </View>
+                        <Text style={{ color: "#333" }}>{c.contact_email}</Text>
+                        {c.contact_phone ? (
+                          <Text style={{ color: "#555", fontSize: 12 }}>
+                            {c.contact_phone}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ))}
                 </View>
-            </Modal>
-
-            {/* Add/Edit Modal */}
-            <Modal visible={editModalVisible} animationType="slide" transparent onRequestClose={() => setEditModalVisible(false)}>
-                <View style={{
-                    flex: 1,
-                    backgroundColor: "rgba(0,0,0,0.5)",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    padding: 20,
-                }}>
-                    <View style={{
-                        backgroundColor: "#fff",
-                        borderRadius: 12,
-                        padding: 20,
-                        width: "100%",
-                        maxWidth: 400,
-                    }}>
-                        <TouchableOpacity
-                            onPress={() => setEditModalVisible(false)}
-                            style={{ position: "absolute", top: 10, right: 10, padding: 4 }}
-                        >
-                            <X size={24} color="#333" />
-                        </TouchableOpacity>
-
-                        <Text style={{ fontSize: 18, fontWeight: "bold", marginBottom: 12 }}>
-                            {formData.id ? "Edit Client" : "Add Client"}
-                        </Text>
-
-                        {[
-                            { placeholder: "Full Name", key: "name" },
-                            { placeholder: "Email", key: "email" },
-                            { placeholder: "Phone Number", key: "phone" },
-                            { placeholder: "Contact Person Name", key: "contactPersonName" },
-                            { placeholder: "Contact Person Number", key: "contactPersonNum" },
-                            { placeholder: "Relation/Role", key: "relation_role" },
-                        ].map((input) => (
-                            <TextInput
-                                key={input.key}
-                                placeholder={input.placeholder}
-                                placeholderTextColor="#121313ff"
-                                value={formData[input.key]}
-                                onChangeText={(text) => setFormData({ ...formData, [input.key]: text })}
-                                style={{
-                                    borderWidth: 1,
-                                    borderColor: "#ddd",
-                                    borderRadius: 6,
-                                    padding: 8,
-                                    marginBottom: 8,
-                                }}
-                            />
-                        ))}
-
-                        <TouchableOpacity
-                            onPress={saveClient}
-                            style={{
-                                backgroundColor: "#0B3D91",
-                                padding: 10,
-                                borderRadius: 6,
-                            }}
-                        >
-                            <Text style={{ color: "#fff", textAlign: "center", fontWeight: "bold" }}>
-                                Save
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </Modal>
+              )}
+            </View>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "flex-end",
+                gap: 12,
+              }}
+            >
+              <TouchableOpacity
+                onPress={() => {
+                  setShowDetail(false);
+                  setSelectedClient(null);
+                }}
+                style={{
+                  backgroundColor: "#114d89",
+                  paddingVertical: 8,
+                  paddingHorizontal: 18,
+                  borderRadius: 8,
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={{ color: "#fff", fontWeight: "600" }}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
-    );
+      )}
+      {/* Add Client Modal */}
+      <AddClient
+        visible={showAddClient}
+        onClose={() => setShowAddClient(false)}
+        onCreated={({ client, contacts: newContacts }) => {
+          setShowAddClient(false);
+          if (client) setClients(prev => [client, ...prev]);
+          if (newContacts?.length) setContacts(prev => [...newContacts, ...prev]);
+        }}
+      />
+    </View>
+  );
 };
 
 export default ViewClients;

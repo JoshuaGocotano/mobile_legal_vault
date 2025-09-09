@@ -1,9 +1,9 @@
-import AddNewCase from "@/components/add-new-case";
 import AllCase from "@/components/all-case";
 import CaseModal from "@/components/case-modal";
 import ViewClients from "@/components/view-clients";
-import { today, allCases as rawallCases } from "@/constants/sample_data";
+import { today } from "@/constants/sample_data"; // removed raw sample list; AllCase fetches from backend
 import { styles } from "@/constants/styles/(tabs)/case_styles";
+import { useAuth } from "@/context/auth-context";
 import { Bell, Search } from "lucide-react-native";
 import React, { useState } from "react";
 import {
@@ -19,10 +19,11 @@ import {
 } from "react-native";
 
 const Cases = () => {
+  const { user } = useAuth();
   const [caseTab, setcaseTab] = useState("All Case");
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedCase, setSelectedCase] = useState(null);
-  const [cases, setCases] = useState(rawallCases); // store editable list
+  // Local cases state removed; AllCase handles fetching based on role
 
   const handleCasePress = (caseItem) => {
     setSelectedCase(caseItem);
@@ -30,14 +31,11 @@ const Cases = () => {
   };
 
   const handleSaveCase = (updatedCase) => {
-    setCases((prev) =>
-      prev.map((c) => (c.id === updatedCase.id ? updatedCase : c))
-    );
+    // Could trigger a refetch in AllCase if we lift state; for now just update selectedCase for modal display.
     setSelectedCase(updatedCase);
   };
 
   return (
-    <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20 }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -57,7 +55,7 @@ const Cases = () => {
 
             <View style={styles.taskButtonAlignments}>
               <View style={{ flexDirection: "row" }}>
-                {["All Case", "+Add New Case"].map((tab) => (
+                {["All Case"].map((tab) => (
                   <TouchableOpacity
                     key={tab}
                     style={[
@@ -101,10 +99,9 @@ const Cases = () => {
 
             <View style={{ flex: 1 }}>
               {caseTab === "All Case" && (
-                <AllCase onCasePress={handleCasePress} cases={cases} />
+                <AllCase onCasePress={handleCasePress} user={user} />
               )}
-              {caseTab === "+Add New Case" && <AddNewCase />}
-              {caseTab === "View Clients" && <ViewClients />}
+              {caseTab === "View Clients" && <ViewClients user={user} />}
             </View>
 
             {selectedCase && (
@@ -118,7 +115,6 @@ const Cases = () => {
           </View>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
-    </ScrollView>
   );
 };
 
